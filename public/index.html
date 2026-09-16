@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lynk.id Influencer Scraper</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+</head>
+<body>
+
+    <div class="background-orbs">
+        <div class="orb orb-1"></div>
+        <div class="orb orb-2"></div>
+        <div class="orb orb-3"></div>
+    </div>
+
+    <main class="glass-container">
+        <header class="app-header">
+            <div class="logo">
+                <i data-lucide="scan-search"></i>
+                <h1>Lynk<span>Scraper</span></h1>
+            </div>
+            <p>Automated Influencer Discovery & Instagram Extraction</p>
+        </header>
+
+        <section class="search-section">
+            <form id="search-form">
+                <div class="input-group">
+                    <i data-lucide="search" class="search-icon"></i>
+                    <input type="text" id="keyword-input" placeholder="e.g. fashion, beauty, food..." required autocomplete="off">
+                    <button type="submit" id="search-btn">
+                        <span>Search</span>
+                        <div class="spinner hide"></div>
+                    </button>
+                </div>
+            </form>
+        </section>
+
+        <section id="status-container" class="status-box hide">
+            <div class="status-header">
+                <i data-lucide="activity"></i>
+                <h3>Live Status</h3>
+            </div>
+            <div id="status-text" class="status-text">Menunggu instruksi...</div>
+            <div class="progress-bar">
+                <div class="progress-fill"></div>
+            </div>
+        </section>
+
+        <section id="results-section" class="results-container hide">
+            <div class="table-header">
+                <h3><i data-lucide="list"></i> Scraping Results</h3>
+                <div class="badges">
+                    <span class="badge badge-success" id="count-success">0 Found</span>
+                </div>
+            </div>
+            
+            <div class="table-wrapper">
+                <table id="results-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Status</th>
+                            <th>Profile URL</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="results-body">
+                        <!-- Data will be populated here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </main>
+
+    <script src="script.js"></script>
+    <script>
+        lucide.createIcons();
+    </script>
+</body>
+</html>

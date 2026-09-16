@@ -1,0 +1,5 @@
+node_modules
+.git
+.env
+final_results.json
+final_results.csv

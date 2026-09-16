@@ -1,0 +1,19 @@
+[
+  {
+    "username": "mela_renas",
+    "status": "SUCCESS",
+    "igLinks": [
+      "https://www.instagram.com/maya_renas"
+    ]
+  },
+  {
+    "username": "raditya_dika",
+    "status": "NO_IG_LINK",
+    "igLinks": []
+  },
+  {
+    "username": "zaskiasungkar15",
+    "status": "NO_IG_LINK",
+    "igLinks": []
+  }
+]
