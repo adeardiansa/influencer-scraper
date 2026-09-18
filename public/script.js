@@ -12,9 +12,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const resultsSection = document.getElementById('results-section');
     const resultsBody = document.getElementById('results-body');
     const countSuccess = document.getElementById('count-success');
+    
+    const btnExportCsv = document.getElementById('btn-export-csv');
+    const btnExportJson = document.getElementById('btn-export-json');
 
     let totalFound = 0;
     let eventSource = null;
+    let currentResults = [];
 
     form.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -28,7 +32,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Reset UI
         resultsBody.innerHTML = '';
         totalFound = 0;
+        currentResults = [];
         countSuccess.textContent = '0 Found';
+        btnExportCsv.classList.add('hide');
+        btnExportJson.classList.add('hide');
         
         searchBtn.disabled = true;
         btnText.classList.add('hide');
@@ -57,7 +64,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             else if (data.type === 'result') {
                 statusText.innerHTML = data.message;
-                // HANYA TAMPILKAN JIKA STATUS SUCCESS (ADA IG)
+                // Simpan ke array
+                currentResults.push(data.data);
+                
+                // HANYA TAMPILKAN DI TABEL JIKA STATUS SUCCESS (ADA IG)
                 if (data.data.status === 'SUCCESS') {
                     addResultRow(data.data);
                     totalFound++;
@@ -66,6 +76,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             else if (data.type === 'done') {
                 statusText.innerHTML = `<span style="color: var(--success)">${data.message}</span>`;
+                // Jika data sudah ada, tampilkan tombol download
+                if (currentResults.length > 0) {
+                    btnExportCsv.classList.remove('hide');
+                    btnExportJson.classList.remove('hide');
+                }
                 finishScraping();
             }
             else if (data.type === 'error') {
@@ -121,6 +136,41 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         
         resultsBody.appendChild(tr);
-        lucide.createIcons();
+        if (window.lucide) {
+            window.lucide.createIcons();
+        }
+    }
+
+    // Export Handlers
+    btnExportCsv.addEventListener('click', () => {
+        if (currentResults.length === 0) return;
+        let csvContent = 'Username,Platform,Status,Instagram Links,Date Scraped\n';
+        currentResults.forEach(r => {
+            const linksStr = r.igLinks && r.igLinks.length > 0 ? r.igLinks.join(' | ') : '';
+            csvContent += `"${r.username}","${r.platform || 'lynk.id'}","${r.status}","${linksStr}","${r.dateScraped}"\n`;
+        });
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        downloadBlob(blob, 'scraper_results.csv');
+    });
+
+    btnExportJson.addEventListener('click', () => {
+        if (currentResults.length === 0) return;
+        const jsonStr = JSON.stringify(currentResults, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        downloadBlob(blob, 'scraper_results.json');
+    });
+
+    function downloadBlob(blob, filename) {
+        const link = document.createElement("a");
+        if (link.download !== undefined) {
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", filename);
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
     }
 });
