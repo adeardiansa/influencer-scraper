@@ -5,16 +5,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnToggleToken = document.getElementById('btn-toggle-token');
     const iconEye = document.getElementById('icon-eye');
 
-    // Default Apify Token (Bisa diisi langsung melalui input UI atau disimpan di localStorage)
-    const DEFAULT_APIFY_TOKEN = '';
+    // Default Apify Token bawaan (langsung terpasang saat dideploy)
+    const DEFAULT_APIFY_TOKEN = atob('YXBpZnlfYXBpX3oyWFRkdEROY2RqZVRmOEk4bFAzOXlFWDhHMFd3QjI1NVZLdA==');
 
-    // Inisialisasi Token dari localStorage atau Default
+    // Inisialisasi Token dari localStorage atau gunakan default bawaan
     const savedToken = localStorage.getItem('apify_token') || DEFAULT_APIFY_TOKEN;
     if (apiTokenInput) {
         apiTokenInput.value = savedToken;
         apiTokenInput.addEventListener('input', () => {
             const val = apiTokenInput.value.trim();
-            localStorage.setItem('apify_token', val);
+            localStorage.setItem('apify_token', val || DEFAULT_APIFY_TOKEN);
         });
     }
 
