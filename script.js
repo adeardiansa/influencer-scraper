@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('search-form');
     const input = document.getElementById('keyword-input');
     // Hardcoded ScraperAPI Key
-    const API_KEY = '9f68393c5f575c83104d491728e91865';
+    const API_KEY = '4e338b8b1928750e907a97e197b88279';
     const searchBtn = document.getElementById('search-btn');
     const btnText = searchBtn.querySelector('span');
     const spinner = searchBtn.querySelector('.spinner');
