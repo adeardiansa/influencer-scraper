@@ -126,6 +126,96 @@ body {
     font-size: 1.1rem;
 }
 
+/* API Configuration Box */
+.api-group {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.api-input-wrapper {
+    display: flex;
+    align-items: center;
+    position: relative;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    padding: 0.4rem 0.75rem;
+    flex: 1;
+    transition: all 0.3s ease;
+}
+
+.api-input-wrapper:focus-within {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--primary-glow);
+}
+
+.api-icon {
+    width: 16px;
+    height: 16px;
+    color: var(--text-muted);
+    margin-right: 0.5rem;
+    flex-shrink: 0;
+}
+
+#api-token-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--text-main);
+    font-size: 0.88rem;
+    outline: none;
+    font-family: monospace;
+}
+
+#api-token-input::placeholder {
+    color: #475569;
+}
+
+.btn-icon {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border-radius: 6px;
+    transition: color 0.2s;
+}
+
+.btn-icon:hover {
+    color: var(--text-main);
+}
+
+.btn-icon i {
+    width: 16px;
+    height: 16px;
+}
+
+.api-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #c084fc;
+    background: rgba(109, 40, 217, 0.15);
+    border: 1px solid rgba(109, 40, 217, 0.3);
+    padding: 0.45rem 0.85rem;
+    border-radius: 20px;
+    white-space: nowrap;
+}
+
+.api-badge i {
+    width: 14px;
+    height: 14px;
+    color: var(--secondary-color);
+}
+
 /* Search Box */
 .input-group {
     display: flex;

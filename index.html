@@ -28,6 +28,17 @@
 
         <section class="search-section">
             <form id="search-form">
+                <div class="api-group">
+                    <div class="api-input-wrapper">
+                        <i data-lucide="key" class="api-icon"></i>
+                        <input type="password" id="api-token-input" placeholder="Apify API Token (apify_api_...)" autocomplete="off">
+                        <button type="button" id="btn-toggle-token" class="btn-icon" title="Lihat/Sembunyikan Token">
+                            <i data-lucide="eye" id="icon-eye"></i>
+                        </button>
+                    </div>
+                    <span class="api-badge"><i data-lucide="zap"></i> Powered by Apify</span>
+                </div>
+
                 <div class="input-group">
                     <i data-lucide="search" class="search-icon"></i>
                     <input type="text" id="keyword-input" placeholder="e.g. fashion, beauty, food..." required autocomplete="off">

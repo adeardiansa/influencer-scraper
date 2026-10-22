@@ -1,8 +1,36 @@
 document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('search-form');
     const input = document.getElementById('keyword-input');
-    // Hardcoded ScraperAPI Key
-    const API_KEY = '4e338b8b1928750e907a97e197b88279';
+    const apiTokenInput = document.getElementById('api-token-input');
+    const btnToggleToken = document.getElementById('btn-toggle-token');
+    const iconEye = document.getElementById('icon-eye');
+
+    // Default Apify Token (Bisa diisi langsung melalui input UI atau disimpan di localStorage)
+    const DEFAULT_APIFY_TOKEN = '';
+
+    // Inisialisasi Token dari localStorage atau Default
+    const savedToken = localStorage.getItem('apify_token') || DEFAULT_APIFY_TOKEN;
+    if (apiTokenInput) {
+        apiTokenInput.value = savedToken;
+        apiTokenInput.addEventListener('input', () => {
+            const val = apiTokenInput.value.trim();
+            localStorage.setItem('apify_token', val);
+        });
+    }
+
+    if (btnToggleToken && apiTokenInput) {
+        btnToggleToken.addEventListener('click', () => {
+            if (apiTokenInput.type === 'password') {
+                apiTokenInput.type = 'text';
+                iconEye.setAttribute('data-lucide', 'eye-off');
+            } else {
+                apiTokenInput.type = 'password';
+                iconEye.setAttribute('data-lucide', 'eye');
+            }
+            if (window.lucide) window.lucide.createIcons();
+        });
+    }
+
     const searchBtn = document.getElementById('search-btn');
     const btnText = searchBtn.querySelector('span');
     const spinner = searchBtn.querySelector('.spinner');
@@ -31,18 +59,57 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) { return rawUrl; }
     };
 
-    async function fetchWithScraperAPI(targetUrl, apiKey) {
-        const scraperUrl = `https://api.scraperapi.com?api_key=${encodeURIComponent(apiKey)}&url=${encodeURIComponent(targetUrl)}`;
-        const response = await fetch(scraperUrl);
-        if (!response.ok) throw new Error(`ScraperAPI Error: ${response.status} ${response.statusText}`);
-        return await response.text();
+    /**
+     * Panggil Apify Google Search Scraper Actor via REST API secara synchronous
+     */
+    async function runApifyGoogleSearch(queriesText, token, resultsPerPage = 15) {
+        const endpoint = `https://api.apify.com/v2/acts/apify~google-search-scraper/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
+
+        const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                queries: queriesText,
+                maxPagesPerQuery: 1,
+                resultsPerPage: resultsPerPage
+            })
+        });
+
+        if (!response.ok) {
+            if (response.status === 401) {
+                throw new Error('Apify API Token tidak valid (401 Unauthorized). Periksa kembali token Anda.');
+            } else if (response.status === 429) {
+                throw new Error('Kuota atau rate limit Apify tercapai (429 Too Many Requests).');
+            } else {
+                let errText = response.statusText;
+                try {
+                    const errJson = await response.json();
+                    if (errJson && errJson.error && errJson.error.message) {
+                        errText = errJson.error.message;
+                    }
+                } catch (e) { }
+                throw new Error(`Apify Error (${response.status}): ${errText}`);
+            }
+        }
+
+        return await response.json();
     }
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
         const keyword = input.value.trim();
-        const apiKey = API_KEY;
-        if (!keyword || !apiKey || isScraping) return;
+        const apiToken = (apiTokenInput ? apiTokenInput.value.trim() : '') || DEFAULT_APIFY_TOKEN;
+
+        if (!apiToken) {
+            statusContainer.classList.remove('hide');
+            statusText.innerHTML = `<span style="color: var(--warning)">⚠️ Harap masukkan <strong>Apify API Token</strong> Anda pada kolom di atas sebelum mencari.</span>`;
+            if (apiTokenInput) apiTokenInput.focus();
+            return;
+        }
+
+        if (!keyword || isScraping) return;
 
         isScraping = true;
         currentResults = [];
@@ -62,97 +129,137 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsSection.classList.remove('hide');
         progressBar.classList.add('pulsing');
 
-        statusText.innerHTML = `🚀 Memulai pencarian dengan keyword: "${keyword}"`;
+        statusText.innerHTML = `🚀 Memulai pencarian dengan keyword: "<strong>${keyword}</strong>" via Apify...`;
 
         try {
+            // TAHAP 1: DISCOVERY VIA GOOGLE SEARCH
+            statusText.innerHTML = `🔍 <strong>TAHAP 1:</strong> Mencari profil Lynk.id & Linktree di Google via Apify...`;
+
+            const discoveryQueries = `site:lynk.id ${keyword}\nsite:linktr.ee ${keyword}`;
+            const datasets = await runApifyGoogleSearch(discoveryQueries, apiToken, 15);
+
             let usersMap = new Map();
-            const totalPages = 2; // Kurangi jumlah halaman agar menghemat request ScraperAPI
-            const platformsToSearch = ['lynk.id', 'linktr.ee'];
+            const blacklist = ['login', 'register', 'home', 'terms', 'privacy', 'tentang', 'pricing', 'contact', 'affiliate', 'faq', 'explore', 'undefined', 'blog', 'help', 'about', 'search', 'images', 'tag', 'category', 'p', 'shop', 'page', 'join'];
 
-            statusText.innerHTML = '🔍 TAHAP 1: Mencari akun di internet (via ScraperAPI)...';
+            if (Array.isArray(datasets)) {
+                datasets.forEach(queryItem => {
+                    const organic = queryItem.organicResults || [];
+                    organic.forEach(res => {
+                        const url = res.url || '';
+                        let platform = null;
+                        let match = null;
 
-            for (const platform of platformsToSearch) {
-                for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
-                    const bParam = (pageNum - 1) * 10 + 1;
-                    const searchUrl = `https://search.yahoo.com/search?p=${encodeURIComponent(`site:${platform} ${keyword}`.trim())}&b=${bParam}`;
+                        if (url.includes('lynk.id')) {
+                            platform = 'lynk.id';
+                            match = url.match(/lynk\.id(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
+                        } else if (url.includes('linktr.ee')) {
+                            platform = 'linktr.ee';
+                            match = url.match(/linktr\.ee(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
+                        }
 
-                    statusText.innerHTML = `Mengumpulkan dari ${platform} halaman ${pageNum}... (1 request)`;
-
-                    try {
-                        const htmlContent = await fetchWithScraperAPI(searchUrl, apiKey);
-
-                        let regex;
-                        if (platform === 'lynk.id') regex = /lynk\.id(?:%2F|\/)([a-zA-Z0-9_.-]+)/gi;
-                        if (platform === 'linktr.ee') regex = /linktr\.ee(?:%2F|\/)([a-zA-Z0-9_.-]+)/gi;
-
-                        let match;
-                        while ((match = regex.exec(htmlContent)) !== null) {
+                        if (match && match[1]) {
                             const username = match[1].toLowerCase().trim();
-                            const blacklist = ['login', 'register', 'home', 'terms', 'privacy', 'tentang', 'pricing', 'contact', 'affiliate', 'faq', 'explore', 'undefined', 'blog', 'help', 'about', 'search', 'images'];
                             if (username && !blacklist.includes(username)) {
                                 if (!usersMap.has(username)) {
-                                    usersMap.set(username, platform);
+                                    usersMap.set(username, {
+                                        username,
+                                        platform,
+                                        title: res.title || '',
+                                        description: res.description || '',
+                                        originalUrl: url
+                                    });
                                 }
                             }
                         }
-                    } catch (err) {
-                        console.error('Search fetch error:', err);
-                    }
-                }
+                    });
+                });
             }
 
-            const targetUsers = Array.from(usersMap, ([username, platform]) => ({ username, platform }));
+            const targetUsers = Array.from(usersMap.values());
 
             if (targetUsers.length === 0) {
-                statusText.innerHTML = `<span style="color: var(--danger)">❌ Tidak menemukan satupun username. Periksa API Key atau keyword Anda.</span>`;
+                statusText.innerHTML = `<span style="color: var(--danger)">❌ Tidak menemukan profil influencer dari keyword "${keyword}". Coba keyword lain (misal: fashion, beauty, food).</span>`;
                 finishScraping();
                 return;
             }
 
-            statusText.innerHTML = `✅ Ditemukan ${targetUsers.length} profil. Mulai mengekstrak IG...`;
-            await delay(1000);
+            statusText.innerHTML = `✅ Ditemukan <strong>${targetUsers.length}</strong> profil unik. Menyiapkan pencarian Instagram...`;
+            await delay(1200);
 
-            // TAHAP 2: SCRAPING PROFIL
-            for (let i = 0; i < targetUsers.length; i++) {
-                const { username, platform } = targetUsers[i];
-                const currentIndexInfo = `[${i + 1}/${targetUsers.length}]`;
+            // TAHAP 2: BATCH INSTAGRAM SEARCH VIA APIFY GOOGLE SEARCH
+            statusText.innerHTML = `📱 <strong>TAHAP 2:</strong> Mencari akun Instagram resmi untuk ${targetUsers.length} influencer...`;
 
-                statusText.innerHTML = `${currentIndexInfo} Membuka profil ${platform}: ${username}... (1 request)`;
+            // Buat query batch untuk tiap username
+            const igQueries = targetUsers.map(u => `site:instagram.com "${u.username}"`).join('\n');
+            let igDatasets = [];
 
-                const url = `https://${platform}/${username}`;
-                let status = "FAILED";
-                let igLinksClean = [];
-
-                try {
-                    const profileHtml = await fetchWithScraperAPI(url, apiKey);
-
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(profileHtml, 'text/html');
-
-                    const links = Array.from(doc.querySelectorAll('a[href*="instagram.com"]')).map(a => a.href);
-                    if (links.length > 0) {
-                        igLinksClean = [...new Set(links.map(cleanIgUrl))];
-                        status = "SUCCESS";
-                    } else {
-                        status = "NO_IG_LINK";
-                    }
-                } catch (err) {
-                    status = `ERROR: Gagal load profil`;
-                }
-
-                const dataToSave = { username, platform, status, igLinks: igLinksClean, dateScraped: new Date().toISOString() };
-                currentResults.push(dataToSave);
-
-                statusText.innerHTML = `${currentIndexInfo} Selesai mengecek ${username} - ${status}`;
-
-                if (status === 'SUCCESS') {
-                    addResultRow(dataToSave);
-                    totalFound++;
-                    countSuccess.textContent = `${totalFound} Found`;
-                }
+            try {
+                igDatasets = await runApifyGoogleSearch(igQueries, apiToken, 3);
+            } catch (err) {
+                console.warn('Batch IG lookup warning:', err);
             }
 
-            statusText.innerHTML = `<span style="color: var(--success)">🎉 Proses Selesai! Menemukan ${totalFound} profil dengan Instagram.</span>`;
+            // Map hasil pencarian IG ke tiap username
+            const igResultMap = new Map();
+            const nonProfiles = ['p', 'reel', 'reels', 'stories', 'explore', 'tags', 'tv', 'direct'];
+
+            if (Array.isArray(igDatasets)) {
+                igDatasets.forEach(item => {
+                    const queryTerm = item.searchQuery ? item.searchQuery.term : '';
+                    const results = item.organicResults || [];
+
+                    let detectedIg = null;
+                    for (const r of results) {
+                        const m = (r.url || '').match(/instagram\.com\/([a-zA-Z0-9_.-]+)/i);
+                        if (m && m[1]) {
+                            const handle = m[1].toLowerCase().replace(/\/$/, '');
+                            if (!nonProfiles.includes(handle)) {
+                                detectedIg = `https://www.instagram.com/${m[1]}/`;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Jika tidak ada profil langsung, ambil URL post/reel pertama sebagai fallback
+                    if (!detectedIg && results.length > 0) {
+                        detectedIg = cleanIgUrl(results[0].url);
+                    }
+
+                    if (detectedIg) {
+                        igResultMap.set(queryTerm.toLowerCase(), detectedIg);
+                    }
+                });
+            }
+
+            // Tampilkan hasil satu per satu ke UI dengan animasi
+            for (let i = 0; i < targetUsers.length; i++) {
+                const user = targetUsers[i];
+                const queryKey = `site:instagram.com "${user.username}"`.toLowerCase();
+                const matchedIg = igResultMap.get(queryKey) || null;
+
+                const igLinks = matchedIg ? [matchedIg] : [];
+                const status = igLinks.length > 0 ? 'SUCCESS' : 'NO_IG_LINK';
+
+                const dataToSave = {
+                    username: user.username,
+                    platform: user.platform,
+                    status: status,
+                    igLinks: igLinks,
+                    dateScraped: new Date().toISOString()
+                };
+
+                currentResults.push(dataToSave);
+                addResultRow(dataToSave);
+
+                totalFound++;
+                countSuccess.textContent = `${totalFound} Found`;
+
+                statusText.innerHTML = `[${i + 1}/${targetUsers.length}] Memproses @${user.username} (${user.platform}) - ${status === 'SUCCESS' ? 'Instagram Ditemukan' : 'Profil Tercatat'}`;
+                await delay(80);
+            }
+
+            const successCount = currentResults.filter(r => r.status === 'SUCCESS').length;
+            statusText.innerHTML = `<span style="color: var(--success)">🎉 Selesai! Menemukan ${totalFound} profil (${successCount} dengan link Instagram terverifikasi).</span>`;
 
             if (currentResults.length > 0) {
                 btnExportCsv.classList.remove('hide');
@@ -160,7 +267,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
         } catch (error) {
-            statusText.innerHTML = `<span style="color: var(--danger)">Terjadi kesalahan fatal: ${error.message}</span>`;
+            statusText.innerHTML = `<span style="color: var(--danger)">Terjadi kesalahan: ${error.message}</span>`;
+            console.error('Scraping Error:', error);
         } finally {
             finishScraping();
         }
@@ -177,7 +285,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function addResultRow(item) {
         const tr = document.createElement('tr');
 
-        // URL Profil (Linktree atau Lynk.id) untuk kolom ke-3
+        // URL Profil (Linktree atau Lynk.id)
         const platform = item.platform || 'lynk.id';
         const profileUrl = `https://${platform}/${item.username}`;
 
@@ -191,14 +299,18 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>`;
 
         // Tombol Action IG
-        let actionBtn = `<button class="btn-visit disabled"><i data-lucide="external-link"></i> N/A</button>`;
+        let actionBtn = `<a href="https://www.instagram.com/${item.username}" target="_blank" class="btn-visit" style="opacity: 0.7;" title="Cari profil di Instagram"><i data-lucide="search"></i> Search IG</a>`;
         if (item.igLinks && item.igLinks.length > 0) {
             actionBtn = `<a href="${item.igLinks[0]}" target="_blank" class="btn-visit"><i data-lucide="external-link"></i> Visit IG</a>`;
         }
 
+        const statusBadge = item.status === 'SUCCESS'
+            ? `<span class="status-badge status-success">SUCCESS</span>`
+            : `<span class="status-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">FOUND</span>`;
+
         tr.innerHTML = `
             <td style="font-weight: 600">@${item.username}</td>
-            <td><span class="status-badge status-success">SUCCESS</span></td>
+            <td>${statusBadge}</td>
             <td>${profileHtml}</td>
             <td>${actionBtn}</td>
         `;
@@ -214,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentResults.length === 0) return;
         let csvContent = 'Username,Platform,Status,Instagram Links,Date Scraped\n';
         currentResults.forEach(r => {
-            const linksStr = r.igLinks && r.igLinks.length > 0 ? r.igLinks.join(' | ') : '';
+            const linksStr = r.igLinks && r.igLinks.length > 0 ? r.igLinks.join(' | ') : `https://www.instagram.com/${r.username}`;
             csvContent += `"${r.username}","${r.platform || 'lynk.id'}","${r.status}","${linksStr}","${r.dateScraped}"\n`;
         });
 
