@@ -136,43 +136,51 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.innerHTML = `🔍 <strong>TAHAP 1:</strong> Mencari profil Lynk.id & Linktree di Google via Apify...`;
 
             const discoveryQueries = `site:lynk.id ${keyword}\nsite:linktr.ee ${keyword}`;
-            const datasets = await runApifyGoogleSearch(discoveryQueries, apiToken, 15);
 
             let usersMap = new Map();
             const blacklist = ['login', 'register', 'home', 'terms', 'privacy', 'tentang', 'pricing', 'contact', 'affiliate', 'faq', 'explore', 'undefined', 'blog', 'help', 'about', 'search', 'images', 'tag', 'category', 'p', 'shop', 'page', 'join'];
 
-            if (Array.isArray(datasets)) {
-                datasets.forEach(queryItem => {
-                    const organic = queryItem.organicResults || [];
-                    organic.forEach(res => {
-                        const url = res.url || '';
-                        let platform = null;
-                        let match = null;
+            // Google kadang mengabaikan operator "site:" sehingga hasil kosong, jadi coba ulang beberapa kali
+            const MAX_DISCOVERY_ATTEMPTS = 3;
+            for (let attempt = 1; attempt <= MAX_DISCOVERY_ATTEMPTS && usersMap.size === 0; attempt++) {
+                if (attempt > 1) {
+                    statusText.innerHTML = `🔁 Hasil kosong, mencoba ulang pencarian (${attempt}/${MAX_DISCOVERY_ATTEMPTS})...`;
+                }
+                const datasets = await runApifyGoogleSearch(discoveryQueries, apiToken, 15);
 
-                        if (url.includes('lynk.id')) {
-                            platform = 'lynk.id';
-                            match = url.match(/lynk\.id(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
-                        } else if (url.includes('linktr.ee')) {
-                            platform = 'linktr.ee';
-                            match = url.match(/linktr\.ee(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
-                        }
+                if (Array.isArray(datasets)) {
+                    datasets.forEach(queryItem => {
+                        const organic = queryItem.organicResults || [];
+                        organic.forEach(res => {
+                            const url = res.url || '';
+                            let platform = null;
+                            let match = null;
 
-                        if (match && match[1]) {
-                            const username = match[1].toLowerCase().trim();
-                            if (username && !blacklist.includes(username)) {
-                                if (!usersMap.has(username)) {
-                                    usersMap.set(username, {
-                                        username,
-                                        platform,
-                                        title: res.title || '',
-                                        description: res.description || '',
-                                        originalUrl: url
-                                    });
+                            if (url.includes('lynk.id')) {
+                                platform = 'lynk.id';
+                                match = url.match(/lynk\.id(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
+                            } else if (url.includes('linktr.ee')) {
+                                platform = 'linktr.ee';
+                                match = url.match(/linktr\.ee(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
+                            }
+
+                            if (match && match[1]) {
+                                const username = match[1].toLowerCase().trim();
+                                if (username && !blacklist.includes(username)) {
+                                    if (!usersMap.has(username)) {
+                                        usersMap.set(username, {
+                                            username,
+                                            platform,
+                                            title: res.title || '',
+                                            description: res.description || '',
+                                            originalUrl: url
+                                        });
+                                    }
                                 }
                             }
-                        }
+                        });
                     });
-                });
+                }
             }
 
             const targetUsers = Array.from(usersMap.values());
@@ -309,10 +317,10 @@ document.addEventListener('DOMContentLoaded', () => {
             : `<span class="status-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">FOUND</span>`;
 
         tr.innerHTML = `
-            <td style="font-weight: 600">@${item.username}</td>
-            <td>${statusBadge}</td>
-            <td>${profileHtml}</td>
-            <td>${actionBtn}</td>
+            <td data-label="Username" style="font-weight: 600">@${item.username}</td>
+            <td data-label="Status">${statusBadge}</td>
+            <td data-label="Profile URL">${profileHtml}</td>
+            <td data-label="Action">${actionBtn}</td>
         `;
 
         resultsBody.appendChild(tr);
