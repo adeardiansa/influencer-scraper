@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Lynk.id Influencer Scraper</title>
+    <title>IndoKOL & Influencer Scraper (Indonesia)</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
@@ -21,9 +21,9 @@
         <header class="app-header">
             <div class="logo">
                 <i data-lucide="scan-search"></i>
-                <h1>Lynk<span>Scraper</span></h1>
+                <h1>Indo<span>KOL Scraper</span></h1>
             </div>
-            <p>Automated Influencer Discovery & Instagram Extraction</p>
+            <p>Discovery & Scraping KOL Instagram, Lynk.id & Linktree Khusus Indonesia 🇮🇩</p>
         </header>
 
         <section class="search-section">
@@ -41,11 +41,38 @@
 
                 <div class="input-group">
                     <i data-lucide="search" class="search-icon"></i>
-                    <input type="text" id="keyword-input" placeholder="e.g. fashion, beauty, food..." required autocomplete="off">
+                    <input type="text" id="keyword-input" placeholder="Ketik topik/niche, misal: fashion, beauty, kuliner, gadget..." required autocomplete="off">
                     <button type="submit" id="search-btn">
-                        <span>Search</span>
+                        <span>Cari Influencer</span>
                         <div class="spinner hide"></div>
                     </button>
+                </div>
+
+                <!-- Filter Platform & Target Jumlah -->
+                <div class="filters-group">
+                    <div class="filter-item">
+                        <i data-lucide="layers" class="filter-icon"></i>
+                        <select id="platform-select" title="Pilih Platform">
+                            <option value="all">🌐 Semua (Instagram KOL + Lynk.id + Linktree)</option>
+                            <option value="instagram">📸 Hanya KOL Instagram</option>
+                            <option value="lynk">🔗 Hanya Lynk.id</option>
+                            <option value="linktree">🌳 Hanya Linktree (Indonesia)</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-item">
+                        <i data-lucide="sliders" class="filter-icon"></i>
+                        <select id="limit-select" title="Target Jumlah Hasil Minimal">
+                            <option value="10" selected>🎯 Target Minimal: 10 Hasil</option>
+                            <option value="15">🎯 Target Minimal: 15 Hasil</option>
+                            <option value="20">🎯 Target Minimal: 20 Hasil</option>
+                            <option value="30">🎯 Target Minimal: 30 Hasil</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-badge-id" title="Scraping khusus regional Indonesia">
+                        <span>🇮🇩 Khusus Indonesia</span>
+                    </div>
                 </div>
             </form>
         </section>
@@ -63,12 +90,12 @@
 
         <section id="results-section" class="results-container hide">
             <div class="table-header">
-                <h3><i data-lucide="list"></i> Scraping Results</h3>
+                <h3><i data-lucide="list"></i> Hasil Scraping</h3>
                 <div class="header-actions">
-                    <button id="btn-export-csv" class="btn-export hide"><i data-lucide="download"></i> CSV</button>
-                    <button id="btn-export-json" class="btn-export hide"><i data-lucide="download"></i> JSON</button>
+                    <button id="btn-export-csv" class="btn-export hide"><i data-lucide="download"></i> Download CSV</button>
+                    <button id="btn-export-json" class="btn-export hide"><i data-lucide="download"></i> Download JSON</button>
                     <div class="badges">
-                        <span class="badge badge-success" id="count-success">0 Found</span>
+                        <span class="badge badge-success" id="count-success">0 Ditemukan</span>
                     </div>
                 </div>
             </div>
@@ -77,9 +104,10 @@
                 <table id="results-table">
                     <thead>
                         <tr>
-                            <th>Username</th>
+                            <th>Creator / KOL</th>
+                            <th>Platform</th>
+                            <th>Bio / Niche</th>
                             <th>Status</th>
-                            <th>Profile URL</th>
                             <th>Action</th>
                         </tr>
                     </thead>
