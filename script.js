@@ -63,10 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     /**
-     * Ekstraksi handle Instagram dari URL, Title, atau Snippet
+     * Ekstraksi handle Instagram dari URL, Title, atau Snippet (untuk Phase 1 Discovery)
      */
     function extractInstagramUser(url, title, snippet) {
-        // 1. Ekstraksi langsung dari URL instagram.com/<username>
         const urlMatch = (url || '').match(/instagram\.com(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
         if (urlMatch && urlMatch[1]) {
             const u = urlMatch[1].toLowerCase().replace(/\/$/, '').trim();
@@ -74,30 +73,85 @@ document.addEventListener('DOMContentLoaded', () => {
                 return u;
             }
         }
-
-        // 2. Ekstraksi pola @username dari Title
         if (title) {
-            const titleMatch = title.match(/@([a-zA-Z0-9_.]+)/);
-            if (titleMatch && titleMatch[1]) {
-                const u = titleMatch[1].toLowerCase().replace(/[.,!?:;]$/, '').trim();
+            const tm = title.match(/@([a-zA-Z0-9_.]+)/);
+            if (tm && tm[1]) {
+                const u = tm[1].toLowerCase().replace(/[.,!?:;]$/, '').trim();
                 if (!nonProfiles.includes(u) && u.length > 1) {
                     return u;
                 }
             }
         }
-
-        // 3. Ekstraksi pola @username dari Snippet
         if (snippet) {
-            const snipMatch = snippet.match(/@([a-zA-Z0-9_.]+)/);
-            if (snipMatch && snipMatch[1]) {
-                const u = snipMatch[1].toLowerCase().replace(/[.,!?:;]$/, '').trim();
+            const sm = snippet.match(/@([a-zA-Z0-9_.]+)/);
+            if (sm && sm[1]) {
+                const u = sm[1].toLowerCase().replace(/[.,!?:;]$/, '').trim();
                 if (!nonProfiles.includes(u) && u.length > 1) {
                     return u;
                 }
             }
         }
-
         return null;
+    }
+
+    /**
+     * Cari kecocokan akun Instagram yang paling relevan (Strict & Smart Matching)
+     * Mencegah akun orang lain yang cuma me-mention agar tidak keliru dianggap akun kreator.
+     */
+    function findBestInstagramMatch(organicResults, originalUsername) {
+        if (!Array.isArray(organicResults) || organicResults.length === 0) return null;
+        const targetNorm = originalUsername.toLowerCase().replace(/[^a-z0-9]/g, '');
+        let bestCandidate = null;
+        let highestScore = 0;
+
+        for (const r of organicResults) {
+            // 1. Cek handle langsung dari URL profil instagram.com/<handle>
+            const m = (r.url || '').match(/instagram\.com(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
+            let candidate = null;
+            if (m && m[1]) {
+                const u = m[1].toLowerCase().replace(/\/$/, '').trim();
+                if (!nonProfiles.includes(u) && u.length > 1) {
+                    candidate = u;
+                }
+            }
+
+            // 2. Fallback cek pola @handle di Title jika URL adalah post/reel
+            if (!candidate) {
+                const tm = (r.title || '').match(/@([a-zA-Z0-9_.]+)/);
+                if (tm && tm[1]) {
+                    const u = tm[1].toLowerCase().replace(/[.,!?:;]$/, '').trim();
+                    if (!nonProfiles.includes(u) && u.length > 1) {
+                        candidate = u;
+                    }
+                }
+            }
+
+            if (candidate) {
+                const candNorm = candidate.replace(/[^a-z0-9]/g, '');
+                let score = 0;
+
+                // Skor 100: Persis sama (tanpa tanda baca/underscore)
+                if (candNorm === targetNorm) {
+                    score = 100;
+                }
+                // Skor 80: Mengandung satu sama lain (misal torenda vs torenda.official atau torendaid)
+                else if (candNorm.includes(targetNorm) || targetNorm.includes(candNorm)) {
+                    score = 80;
+                }
+                // Skor 20: Tidak mirip (kemungkinan akun orang lain yang me-mention/collab)
+                else {
+                    score = 20;
+                }
+
+                if (score > highestScore) {
+                    highestScore = score;
+                    bestCandidate = candidate;
+                }
+            }
+        }
+
+        // Hanya terima jika tingkat kecocokan tinggi (score >= 70)
+        return highestScore >= 70 ? bestCandidate : null;
     }
 
     /**
@@ -322,23 +376,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const igQueries = needIgLookup.map(u => `site:instagram.com "${u.username}"`).join('\n');
 
                 try {
-                    const igDatasets = await runApifyGoogleSearch(igQueries, apiToken, 3);
+                    const igDatasets = await runApifyGoogleSearch(igQueries, apiToken, 5);
                     if (Array.isArray(igDatasets)) {
                         igDatasets.forEach(item => {
-                            const queryTerm = item.searchQuery ? item.searchQuery.term : '';
+                            const queryTerm = (item.searchQuery ? item.searchQuery.term : '').toLowerCase();
                             const results = item.organicResults || [];
 
-                            let detectedIg = null;
-                            for (const r of results) {
-                                const igUser = extractInstagramUser(r.url, r.title, r.description);
-                                if (igUser) {
-                                    detectedIg = `https://www.instagram.com/${igUser}/`;
-                                    break;
-                                }
-                            }
+                            // Cari kreator yang bersesuaian dengan query ini
+                            const matchedUser = needIgLookup.find(u =>
+                                queryTerm.includes(`"${u.username.toLowerCase()}"`) ||
+                                queryTerm.includes(u.username.toLowerCase())
+                            );
 
-                            if (detectedIg) {
-                                igResultMap.set(queryTerm.toLowerCase(), detectedIg);
+                            if (matchedUser) {
+                                const bestIgCandidate = findBestInstagramMatch(results, matchedUser.username);
+                                if (bestIgCandidate) {
+                                    igResultMap.set(matchedUser.username.toLowerCase(), bestIgCandidate);
+                                }
                             }
                         });
                     }
@@ -350,32 +404,30 @@ document.addEventListener('DOMContentLoaded', () => {
             // Tampilkan hasil ke UI tabel
             for (let i = 0; i < targetUsers.length; i++) {
                 const user = targetUsers[i];
-                let igLink = null;
+                let igHandle = null;
 
                 if (user.platform === 'instagram.com') {
-                    igLink = user.profileUrl;
+                    igHandle = user.username;
                     user.status = 'KOL INSTAGRAM';
                 } else {
-                    const queryKey = `site:instagram.com "${user.username}"`.toLowerCase();
-                    const matchedIg = igResultMap.get(queryKey) || null;
-                    if (matchedIg) {
-                        igLink = matchedIg;
+                    const matchedCandidate = igResultMap.get(user.username.toLowerCase()) || null;
+                    if (matchedCandidate) {
+                        igHandle = matchedCandidate;
                         user.status = 'VERIFIED IG';
                     }
                 }
 
-                if (igLink && !user.igLinks.includes(igLink)) {
-                    user.igLinks = [igLink];
-                }
+                const igLinks = igHandle ? [`https://www.instagram.com/${igHandle}/`] : [];
 
                 const dataToSave = {
                     username: user.username,
+                    igHandle: igHandle,
                     platform: user.platform,
                     title: user.title,
                     description: user.description,
                     profileUrl: user.profileUrl,
                     status: user.status,
-                    igLinks: user.igLinks,
+                    igLinks: igLinks,
                     country: 'Indonesia 🇮🇩',
                     dateScraped: new Date().toISOString()
                 };
@@ -438,12 +490,42 @@ document.addEventListener('DOMContentLoaded', () => {
             statusBadgeHtml = `<span class="status-badge status-found">PROFIL AKTIF</span>`;
         }
 
+        // Creator Cell
+        let creatorCellHtml = '';
+        if (platform === 'instagram.com') {
+            creatorCellHtml = `
+                <div class="user-cell">
+                    <a href="${item.profileUrl}" target="_blank" rel="noopener noreferrer" class="user-handle">@${item.username}</a>
+                    <span class="user-country">📸 Akun Resmi Instagram</span>
+                </div>
+            `;
+        } else {
+            let igSubHtml = '';
+            if (item.igHandle) {
+                igSubHtml = `
+                    <a href="https://www.instagram.com/${item.igHandle}/" target="_blank" rel="noopener noreferrer" class="user-ig-sub" title="Akun Instagram Terverifikasi">
+                        ↳ <i data-lucide="instagram" style="width:11px;height:11px"></i> IG: <strong>@${item.igHandle}</strong>
+                    </a>
+                `;
+            } else {
+                const platformName = platform === 'lynk.id' ? 'Lynk.id' : 'Linktree';
+                igSubHtml = `<span class="user-country">🇮🇩 Profil ${platformName}</span>`;
+            }
+
+            creatorCellHtml = `
+                <div class="user-cell">
+                    <a href="${item.profileUrl}" target="_blank" rel="noopener noreferrer" class="user-handle" title="Buka profil ${platform}">@${item.username}</a>
+                    ${igSubHtml}
+                </div>
+            `;
+        }
+
         // Action Button
         let actionBtn = '';
-        if (item.igLinks && item.igLinks.length > 0) {
-            actionBtn = `<a href="${item.igLinks[0]}" target="_blank" rel="noopener noreferrer" class="btn-visit btn-ig"><i data-lucide="instagram"></i> Visit IG</a>`;
+        if (item.igHandle) {
+            actionBtn = `<a href="https://www.instagram.com/${item.igHandle}/" target="_blank" rel="noopener noreferrer" class="btn-visit btn-ig" title="Kunjungi @${item.igHandle} di Instagram"><i data-lucide="instagram"></i> Visit IG (@${item.igHandle})</a>`;
         } else {
-            actionBtn = `<a href="https://www.instagram.com/${item.username}/" target="_blank" rel="noopener noreferrer" class="btn-visit"><i data-lucide="search"></i> Cari IG</a>`;
+            actionBtn = `<a href="https://www.instagram.com/${item.username}/" target="_blank" rel="noopener noreferrer" class="btn-visit" title="Cari @${item.username} di Instagram"><i data-lucide="search"></i> Cari di IG</a>`;
         }
 
         // Bio Snippet
@@ -451,10 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tr.innerHTML = `
             <td data-label="Creator / KOL">
-                <div class="user-cell">
-                    <a href="${item.profileUrl}" target="_blank" rel="noopener noreferrer" class="user-handle">@${item.username}</a>
-                    <span class="user-country">🇮🇩 Indonesia</span>
-                </div>
+                ${creatorCellHtml}
             </td>
             <td data-label="Platform">${platformBadge}</td>
             <td data-label="Bio / Niche">
@@ -473,11 +552,12 @@ document.addEventListener('DOMContentLoaded', () => {
     // Export Handlers
     btnExportCsv.addEventListener('click', () => {
         if (currentResults.length === 0) return;
-        let csvContent = 'Username,Platform,Negara,Profile URL,Instagram URL,Bio / Info,Status,Tanggal Scraped\n';
+        let csvContent = 'Username Profil,Akun Instagram,Platform,Negara,Profile URL,Instagram URL,Bio / Info,Status,Tanggal Scraped\n';
         currentResults.forEach(r => {
-            const igUrl = r.igLinks && r.igLinks.length > 0 ? r.igLinks[0] : `https://www.instagram.com/${r.username}/`;
+            const igHandle = r.igHandle || (r.platform === 'instagram.com' ? r.username : '-');
+            const igUrl = r.igLinks && r.igLinks.length > 0 ? r.igLinks[0] : (r.igHandle ? `https://www.instagram.com/${r.igHandle}/` : `https://www.instagram.com/${r.username}/`);
             const cleanBio = (r.description || r.title || '').replace(/"/g, '""').replace(/\n/g, ' ');
-            csvContent += `"${r.username}","${r.platform}","${r.country}","${r.profileUrl}","${igUrl}","${cleanBio}","${r.status}","${r.dateScraped}"\n`;
+            csvContent += `"${r.username}","${igHandle}","${r.platform}","${r.country}","${r.profileUrl}","${igUrl}","${cleanBio}","${r.status}","${r.dateScraped}"\n`;
         });
 
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });

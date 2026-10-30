@@ -513,6 +513,29 @@ tbody tr:hover {
     color: var(--text-muted);
 }
 
+.user-ig-sub {
+    font-size: 0.78rem;
+    color: #fca5a5;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    margin-top: 0.15rem;
+    background: rgba(236, 72, 153, 0.12);
+    border: 1px solid rgba(236, 72, 153, 0.25);
+    padding: 0.15rem 0.45rem;
+    border-radius: 6px;
+    width: fit-content;
+    transition: all 0.2s ease;
+}
+
+.user-ig-sub:hover {
+    color: #ffffff;
+    background: rgba(236, 72, 153, 0.25);
+    border-color: rgba(236, 72, 153, 0.5);
+    text-decoration: none;
+}
+
 /* Platform Badges */
 .platform-pill {
     display: inline-flex;
