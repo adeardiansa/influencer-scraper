@@ -54,49 +54,93 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const delay = (ms) => new Promise(res => setTimeout(res, ms));
 
-    const nonProfiles = [
-        'p', 'reel', 'reels', 'stories', 'explore', 'tags', 'tv', 'direct',
-        'popular', 'accounts', 'about', 'legal', 'terms', 'privacy',
-        'developer', 'directory', 'help', 'login', 'signup', 'home',
-        'pricing', 'contact', 'affiliate', 'faq', 'undefined', 'blog',
-        'shop', 'page', 'join', 'register', 'tentang'
+    // Rute internal & URL sistem Instagram yang BUKAN akun pengguna
+    const INSTAGRAM_RESERVED_ROUTES = [
+        'about', 'accounts', 'api', 'blog', 'business', 'channel', 'channels',
+        'community', 'contact', 'creator', 'creators', 'developer', 'developers',
+        'directory', 'direct', 'download', 'emails', 'events', 'explore',
+        'features', 'graphql', 'guide', 'guides', 'help', 'integrity',
+        'invites', 'jobs', 'legal', 'link', 'live', 'login', 'media', 'meta',
+        'p', 'popular', 'press', 'privacy', 'profile', 'reel', 'reels',
+        'safety', 'security', 'session', 'settings', 'share', 'shop', 'signup',
+        'stories', 'story', 'support', 'tags', 'terms', 'threads', 'tv',
+        'v', 'video', 'web', 'your_activity', 'home', 'pricing', 'affiliate',
+        'faq', 'undefined', 'page', 'join', 'register', 'tentang'
     ];
+
+    /**
+     * Validasi ketat format handle Instagram:
+     * 1. Panjang 2 - 30 karakter
+     * 2. Hanya huruf (a-z), angka (0-9), titik (.), dan garis bawah (_)
+     * 3. TIDAK boleh mengandung tanda strip (-) atau spasi
+     * 4. TIDAK boleh diawali atau diakhiri titik (.)
+     * 5. TIDAK boleh mengandung dua titik berturut-turut (..)
+     * 6. Bukan rute internal Instagram (p, reel, popular, explore, dll)
+     */
+    function isValidInstagramHandle(handle) {
+        if (!handle || typeof handle !== 'string') return false;
+        let clean = handle.trim().toLowerCase().replace(/^@/, '');
+        clean = clean.replace(/[\/.,!?:;]+$/, '').replace(/^[\/.,!?:;]+/, '');
+
+        if (clean.length < 2 || clean.length > 30) return false;
+        if (!/^[a-z0-9_][a-z0-9_.]*[a-z0-9_]$/.test(clean) && !/^[a-z0-9_]$/.test(clean)) return false;
+        if (clean.includes('..')) return false;
+        if (INSTAGRAM_RESERVED_ROUTES.includes(clean)) return false;
+
+        return true;
+    }
+
+    /**
+     * Bersihkan teks handle dan pastikan valid
+     */
+    function cleanInstagramHandle(handle) {
+        if (!handle || typeof handle !== 'string') return null;
+        let clean = handle.trim().toLowerCase().replace(/^@/, '');
+        clean = clean.replace(/[\/.,!?:;]+$/, '').replace(/^[\/.,!?:;]+/, '');
+        return isValidInstagramHandle(clean) ? clean : null;
+    }
 
     /**
      * Ekstraksi handle Instagram dari URL, Title, atau Snippet (untuk Phase 1 Discovery)
      */
     function extractInstagramUser(url, title, snippet) {
-        const urlMatch = (url || '').match(/instagram\.com(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
+        // 1. Ekstraksi langsung dari URL: instagram.com/<handle>
+        const urlMatch = (url || '').match(/instagram\.com(?:\/|%2F)([a-zA-Z0-9_.]+)/i);
         if (urlMatch && urlMatch[1]) {
-            const u = urlMatch[1].toLowerCase().replace(/\/$/, '').trim();
-            if (!nonProfiles.includes(u) && u.length > 1) {
-                return u;
+            const cleaned = cleanInstagramHandle(urlMatch[1]);
+            if (cleaned) {
+                return cleaned;
             }
         }
+
+        // 2. Ekstraksi pola @handle dari Title (misal: "Nama (@handle) • Instagram photos")
         if (title) {
             const tm = title.match(/@([a-zA-Z0-9_.]+)/);
             if (tm && tm[1]) {
-                const u = tm[1].toLowerCase().replace(/[.,!?:;]$/, '').trim();
-                if (!nonProfiles.includes(u) && u.length > 1) {
-                    return u;
+                const cleaned = cleanInstagramHandle(tm[1]);
+                if (cleaned) {
+                    return cleaned;
                 }
             }
         }
+
+        // 3. Ekstraksi pola @handle dari Snippet
         if (snippet) {
             const sm = snippet.match(/@([a-zA-Z0-9_.]+)/);
             if (sm && sm[1]) {
-                const u = sm[1].toLowerCase().replace(/[.,!?:;]$/, '').trim();
-                if (!nonProfiles.includes(u) && u.length > 1) {
-                    return u;
+                const cleaned = cleanInstagramHandle(sm[1]);
+                if (cleaned) {
+                    return cleaned;
                 }
             }
         }
+
         return null;
     }
 
     /**
      * Cari kecocokan akun Instagram yang paling relevan (Strict & Smart Matching)
-     * Mencegah akun orang lain yang cuma me-mention agar tidak keliru dianggap akun kreator.
+     * Hanya menerima handle yang valid dan memiliki skor kemiripan tinggi.
      */
     function findBestInstagramMatch(organicResults, originalUsername) {
         if (!Array.isArray(organicResults) || organicResults.length === 0) return null;
@@ -105,24 +149,19 @@ document.addEventListener('DOMContentLoaded', () => {
         let highestScore = 0;
 
         for (const r of organicResults) {
-            // 1. Cek handle langsung dari URL profil instagram.com/<handle>
-            const m = (r.url || '').match(/instagram\.com(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
             let candidate = null;
+
+            // 1. Cek dari URL profil
+            const m = (r.url || '').match(/instagram\.com(?:\/|%2F)([a-zA-Z0-9_.]+)/i);
             if (m && m[1]) {
-                const u = m[1].toLowerCase().replace(/\/$/, '').trim();
-                if (!nonProfiles.includes(u) && u.length > 1) {
-                    candidate = u;
-                }
+                candidate = cleanInstagramHandle(m[1]);
             }
 
-            // 2. Fallback cek pola @handle di Title jika URL adalah post/reel
-            if (!candidate) {
-                const tm = (r.title || '').match(/@([a-zA-Z0-9_.]+)/);
+            // 2. Cek dari Title (@handle)
+            if (!candidate && r.title) {
+                const tm = r.title.match(/@([a-zA-Z0-9_.]+)/);
                 if (tm && tm[1]) {
-                    const u = tm[1].toLowerCase().replace(/[.,!?:;]$/, '').trim();
-                    if (!nonProfiles.includes(u) && u.length > 1) {
-                        candidate = u;
-                    }
+                    candidate = cleanInstagramHandle(tm[1]);
                 }
             }
 
@@ -130,15 +169,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const candNorm = candidate.replace(/[^a-z0-9]/g, '');
                 let score = 0;
 
-                // Skor 100: Persis sama (tanpa tanda baca/underscore)
+                // Skor 100: Persis sama
                 if (candNorm === targetNorm) {
                     score = 100;
                 }
-                // Skor 80: Mengandung satu sama lain (misal torenda vs torenda.official atau torendaid)
+                // Skor 80: Mengandung satu sama lain (misal torenda vs torenda.official)
                 else if (candNorm.includes(targetNorm) || targetNorm.includes(candNorm)) {
                     score = 80;
                 }
-                // Skor 20: Tidak mirip (kemungkinan akun orang lain yang me-mention/collab)
+                // Skor 20: Tidak mirip
                 else {
                     score = 20;
                 }
@@ -211,10 +250,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 1. Deteksi Instagram KOL
                 if (url.includes('instagram.com') && (platformChoice === 'all' || platformChoice === 'instagram')) {
                     const igUser = extractInstagramUser(url, title, snippet);
-                    if (igUser && !nonProfiles.includes(igUser)) {
+                    if (igUser && isValidInstagramHandle(igUser)) {
                         if (!usersMap.has(igUser)) {
                             usersMap.set(igUser, {
                                 username: igUser,
+                                igHandle: igUser,
                                 platform: 'instagram.com',
                                 title: title || `KOL Instagram @${igUser}`,
                                 description: snippet,
@@ -231,10 +271,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (url.includes('lynk.id') && (platformChoice === 'all' || platformChoice === 'lynk')) {
                     const match = url.match(/lynk\.id(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
                     if (match && match[1]) {
-                        const username = match[1].toLowerCase().trim();
-                        if (username && !nonProfiles.includes(username) && !usersMap.has(username)) {
+                        const username = match[1].toLowerCase().trim().replace(/\/$/, '');
+                        if (username && !INSTAGRAM_RESERVED_ROUTES.includes(username) && !usersMap.has(username)) {
                             usersMap.set(username, {
                                 username: username,
+                                igHandle: null,
                                 platform: 'lynk.id',
                                 title: title || `Lynk.id Profile @${username}`,
                                 description: snippet,
@@ -251,10 +292,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 else if (url.includes('linktr.ee') && (platformChoice === 'all' || platformChoice === 'linktree')) {
                     const match = url.match(/linktr\.ee(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
                     if (match && match[1]) {
-                        const username = match[1].toLowerCase().trim();
-                        if (username && !nonProfiles.includes(username) && !usersMap.has(username)) {
+                        const username = match[1].toLowerCase().trim().replace(/\/$/, '');
+                        if (username && !INSTAGRAM_RESERVED_ROUTES.includes(username) && !usersMap.has(username)) {
                             usersMap.set(username, {
                                 username: username,
+                                igHandle: null,
                                 platform: 'linktr.ee',
                                 title: title || `Linktree Profile @${username}`,
                                 description: snippet,
@@ -312,8 +354,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let primaryQueries = [];
             if (platformChoice === 'all' || platformChoice === 'instagram') {
-                primaryQueries.push(`site:instagram.com ${keyword} (endorse OR "paid promote" OR kol OR influencer) indonesia`);
-                primaryQueries.push(`site:instagram.com ${keyword} (creator OR blogger OR vlogger) (jakarta OR surabaya OR bandung OR indonesia)`);
+                primaryQueries.push(`site:instagram.com "${keyword}" (endorse OR "paid promote" OR kol OR influencer) indonesia`);
+                primaryQueries.push(`site:instagram.com "${keyword}" (creator OR blogger OR vlogger) (jakarta OR surabaya OR bandung OR indonesia)`);
             }
             if (platformChoice === 'all' || platformChoice === 'lynk') {
                 primaryQueries.push(`site:lynk.id ${keyword}`);
@@ -414,9 +456,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (matchedCandidate) {
                         igHandle = matchedCandidate;
                         user.status = 'VERIFIED IG';
+                    } else {
+                        user.status = 'NO_IG';
                     }
                 }
 
+                user.igHandle = igHandle;
                 const igLinks = igHandle ? [`https://www.instagram.com/${igHandle}/`] : [];
 
                 const dataToSave = {
@@ -442,8 +487,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 await delay(60);
             }
 
-            const igCount = currentResults.filter(r => r.igLinks && r.igLinks.length > 0).length;
-            statusText.innerHTML = `<span style="color: var(--success)">🎉 Selesai! Berhasil menemukan <strong>${totalFound}</strong> kreator Indonesia (${igCount} memiliki link Instagram aktif).</span>`;
+            const igCount = currentResults.filter(r => r.igHandle).length;
+            statusText.innerHTML = `<span style="color: var(--success)">🎉 Selesai! Berhasil menemukan <strong>${totalFound}</strong> kreator Indonesia (${igCount} memiliki link Instagram aktif & terverifikasi).</span>`;
 
             if (currentResults.length > 0) {
                 btnExportCsv.classList.remove('hide');
@@ -487,7 +532,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (item.status === 'VERIFIED IG') {
             statusBadgeHtml = `<span class="status-badge status-success">✓ VERIFIED IG</span>`;
         } else {
-            statusBadgeHtml = `<span class="status-badge status-found">PROFIL AKTIF</span>`;
+            statusBadgeHtml = `<span class="status-badge status-no_ig">BELUM ADA IG</span>`;
         }
 
         // Creator Cell
@@ -501,15 +546,15 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         } else {
             let igSubHtml = '';
-            if (item.igHandle) {
+            if (item.igHandle && isValidInstagramHandle(item.igHandle)) {
                 igSubHtml = `
-                    <a href="https://www.instagram.com/${item.igHandle}/" target="_blank" rel="noopener noreferrer" class="user-ig-sub" title="Akun Instagram Terverifikasi">
+                    <a href="https://www.instagram.com/${item.igHandle}/" target="_blank" rel="noopener noreferrer" class="user-ig-sub" title="Akun Instagram Terverifikasi: @${item.igHandle}">
                         ↳ <i data-lucide="instagram" style="width:11px;height:11px"></i> IG: <strong>@${item.igHandle}</strong>
                     </a>
                 `;
             } else {
                 const platformName = platform === 'lynk.id' ? 'Lynk.id' : 'Linktree';
-                igSubHtml = `<span class="user-country">🇮🇩 Profil ${platformName}</span>`;
+                igSubHtml = `<span class="user-country" style="color: #94a3b8;">⚠️ Belum Terhubung ke IG</span>`;
             }
 
             creatorCellHtml = `
@@ -520,12 +565,23 @@ document.addEventListener('DOMContentLoaded', () => {
             `;
         }
 
-        // Action Button
+        // Action Button: HANYA berikan link "Visit IG" JIKA akun Instagram valid terverifikasi!
         let actionBtn = '';
-        if (item.igHandle) {
-            actionBtn = `<a href="https://www.instagram.com/${item.igHandle}/" target="_blank" rel="noopener noreferrer" class="btn-visit btn-ig" title="Kunjungi @${item.igHandle} di Instagram"><i data-lucide="instagram"></i> Visit IG (@${item.igHandle})</a>`;
+        if (item.igHandle && isValidInstagramHandle(item.igHandle)) {
+            actionBtn = `
+                <a href="https://www.instagram.com/${item.igHandle}/" target="_blank" rel="noopener noreferrer" class="btn-visit btn-ig" title="Kunjungi @${item.igHandle} di Instagram">
+                    <i data-lucide="instagram"></i> Visit IG (@${item.igHandle})
+                </a>
+            `;
         } else {
-            actionBtn = `<a href="https://www.instagram.com/${item.username}/" target="_blank" rel="noopener noreferrer" class="btn-visit" title="Cari @${item.username} di Instagram"><i data-lucide="search"></i> Cari di IG</a>`;
+            // JIKA TIDAK ADA IG: Jangan arahkan ke link mati instagram.com/<username>!
+            // Berikan tombol Cari di Google untuk akun tersebut agar tidak pernah kena 404
+            const googleSearchUrl = `https://www.google.com/search?q=${encodeURIComponent('site:instagram.com "' + item.username + '"')}`;
+            actionBtn = `
+                <a href="${googleSearchUrl}" target="_blank" rel="noopener noreferrer" class="btn-visit btn-no-ig" title="Akun IG belum terverifikasi otomatis. Klik untuk cari di Google.">
+                    <i data-lucide="search"></i> Cari Akun IG
+                </a>
+            `;
         }
 
         // Bio Snippet
@@ -554,8 +610,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentResults.length === 0) return;
         let csvContent = 'Username Profil,Akun Instagram,Platform,Negara,Profile URL,Instagram URL,Bio / Info,Status,Tanggal Scraped\n';
         currentResults.forEach(r => {
-            const igHandle = r.igHandle || (r.platform === 'instagram.com' ? r.username : '-');
-            const igUrl = r.igLinks && r.igLinks.length > 0 ? r.igLinks[0] : (r.igHandle ? `https://www.instagram.com/${r.igHandle}/` : `https://www.instagram.com/${r.username}/`);
+            const igHandle = r.igHandle || '-';
+            const igUrl = r.igHandle ? `https://www.instagram.com/${r.igHandle}/` : '-';
             const cleanBio = (r.description || r.title || '').replace(/"/g, '""').replace(/\n/g, ' ');
             csvContent += `"${r.username}","${igHandle}","${r.platform}","${r.country}","${r.profileUrl}","${igUrl}","${cleanBio}","${r.status}","${r.dateScraped}"\n`;
         });

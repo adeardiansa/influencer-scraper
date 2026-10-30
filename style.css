@@ -604,6 +604,12 @@ tbody tr:hover {
     border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
+.status-no_ig {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.25);
+}
+
 /* Action Buttons */
 .btn-visit {
     background: rgba(255,255,255,0.08);
@@ -631,6 +637,19 @@ tbody tr:hover {
     color: white;
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(220, 39, 67, 0.4);
+}
+
+.btn-visit.btn-no-ig {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    color: #94a3b8;
+}
+
+.btn-visit.btn-no-ig:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.3);
+    color: var(--text-main);
+    transform: translateY(-1px);
 }
 
 .btn-visit i { width: 14px; }
