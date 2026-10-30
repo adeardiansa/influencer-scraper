@@ -173,9 +173,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (candNorm === targetNorm) {
                     score = 100;
                 }
-                // Skor 80: Mengandung satu sama lain (misal torenda vs torenda.official)
+                // Skor 80: Mengandung satu sama lain (misal torenda vs torendajewelry)
                 else if (candNorm.includes(targetNorm) || targetNorm.includes(candNorm)) {
                     score = 80;
+                }
+                // Skor 75: Bio atau deskripsi profil Instagram secara eksplisit memuat link bio kreator (misal "lynk.id/xxx" atau "linktr.ee/xxx")
+                else if (
+                    (r.description && r.description.toLowerCase().includes(originalUsername.toLowerCase())) ||
+                    (r.title && r.title.toLowerCase().includes(originalUsername.toLowerCase()))
+                ) {
+                    score = 75;
                 }
                 // Skor 20: Tidak mirip
                 else {
@@ -414,8 +421,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (needIgLookup.length > 0) {
                 statusText.innerHTML = `📱 <strong>TAHAP 2:</strong> Memverifikasi akun Instagram untuk ${needIgLookup.length} kreator bio...`;
-                // Buat query batch untuk pencarian IG
-                const igQueries = needIgLookup.map(u => `site:instagram.com "${u.username}"`).join('\n');
+                // Buat query batch untuk pencarian IG (mencari berdasarkan username dan bio-link yang ditempel di profil IG)
+                const igQueries = needIgLookup.map(u => {
+                    const domain = u.platform === 'lynk.id' ? 'lynk.id' : 'linktr.ee';
+                    return `site:instagram.com "${u.username}" OR "${domain}/${u.username}"`;
+                }).join('\n');
 
                 try {
                     const igDatasets = await runApifyGoogleSearch(igQueries, apiToken, 5);
@@ -426,7 +436,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
                             // Cari kreator yang bersesuaian dengan query ini
                             const matchedUser = needIgLookup.find(u =>
-                                queryTerm.includes(`"${u.username.toLowerCase()}"`) ||
                                 queryTerm.includes(u.username.toLowerCase())
                             );
 
