@@ -152,6 +152,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Cari kecocokan akun TikTok yang paling relevan.
+     * Hanya menerima handle yang sama/mirip: query "@username" membuat hampir semua hasil
+     * menyebut username di judul/deskripsi, sehingga aturan itu memicu salah cocok.
+     */
+    function findBestTiktokMatch(organicResults, originalUsername) {
+        if (!Array.isArray(organicResults) || organicResults.length === 0) return null;
+        const targetNorm = originalUsername.toLowerCase().replace(/[^a-z0-9]/g, '');
+        let bestCandidate = null;
+        let highestScore = 0;
+
+        for (const r of organicResults) {
+            const candidate = extractTiktokUser(r.url);
+            if (!candidate) continue;
+
+            const candNorm = candidate.replace(/[^a-z0-9]/g, '');
+            let score = 20;
+            if (candNorm === targetNorm) {
+                score = 100;
+            } else if (candNorm.includes(targetNorm) || targetNorm.includes(candNorm)) {
+                score = 80;
+            }
+
+            if (score > highestScore) {
+                highestScore = score;
+                bestCandidate = candidate;
+            }
+        }
+
+        return highestScore >= 70 ? bestCandidate : null;
+    }
+
+    /**
      * Cari kecocokan akun Instagram yang paling relevan (Strict & Smart Matching)
      * Hanya menerima handle yang valid dan memiliki skor kemiripan tinggi.
      */
@@ -456,14 +488,17 @@ document.addEventListener('DOMContentLoaded', () => {
             statusText.innerHTML = `✅ Ditemukan <strong>${targetUsers.length}</strong> profil kreator Indonesia. Menyinkronkan Instagram...`;
             await delay(800);
 
-            // TAHAP 2: LOOKUP INSTAGRAM UNTUK PROFIL LYNK.ID / LINKTREE YANG BELUM ADA IG
-            const needIgLookup = targetUsers.filter(u => u.platform === 'lynk.id' || u.platform === 'linktr.ee');
+            // TAHAP 2: LOOKUP INSTAGRAM UNTUK PROFIL LYNK.ID / LINKTREE / TIKTOK YANG BELUM ADA IG
+            const needIgLookup = targetUsers.filter(u => u.platform !== 'instagram.com');
             const igResultMap = new Map();
 
             if (needIgLookup.length > 0) {
-                statusText.innerHTML = `📱 <strong>TAHAP 2:</strong> Memverifikasi akun Instagram untuk ${needIgLookup.length} kreator bio...`;
+                statusText.innerHTML = `📱 <strong>TAHAP 2:</strong> Memverifikasi akun Instagram untuk ${needIgLookup.length} kreator...`;
                 // Buat query batch untuk pencarian IG (mencari berdasarkan username dan bio-link yang ditempel di profil IG)
                 const igQueries = needIgLookup.map(u => {
+                    if (u.platform === 'tiktok.com') {
+                        return `site:instagram.com "${u.username}"`;
+                    }
                     const domain = u.platform === 'lynk.id' ? 'lynk.id' : 'linktr.ee';
                     return `site:instagram.com "${u.username}" OR "${domain}/${u.username}"`;
                 }).join('\n');
@@ -493,6 +528,34 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            // TAHAP 3: LOOKUP TIKTOK UNTUK KREATOR YANG BUKAN BERASAL DARI TIKTOK
+            const needTtLookup = targetUsers.filter(u => u.platform !== 'tiktok.com');
+            const ttResultMap = new Map();
+
+            if (needTtLookup.length > 0) {
+                statusText.innerHTML = `🎵 <strong>TAHAP 3:</strong> Mencari akun TikTok untuk ${needTtLookup.length} kreator...`;
+                const ttQueryToUser = new Map();
+                needTtLookup.forEach(u => ttQueryToUser.set(`site:tiktok.com "@${u.username}"`.toLowerCase(), u));
+
+                try {
+                    const ttDatasets = await runApifyGoogleSearch(Array.from(ttQueryToUser.keys()).join('\n'), apiToken, 5);
+                    if (Array.isArray(ttDatasets)) {
+                        ttDatasets.forEach(item => {
+                            const queryTerm = (item.searchQuery ? item.searchQuery.term : '').toLowerCase();
+                            const matchedUser = ttQueryToUser.get(queryTerm);
+                            if (matchedUser) {
+                                const bestTtCandidate = findBestTiktokMatch(item.organicResults || [], matchedUser.username);
+                                if (bestTtCandidate) {
+                                    ttResultMap.set(matchedUser.username.toLowerCase(), bestTtCandidate);
+                                }
+                            }
+                        });
+                    }
+                } catch (err) {
+                    console.warn('Batch TikTok lookup warning:', err);
+                }
+            }
+
             // Tampilkan hasil ke UI tabel
             for (let i = 0; i < targetUsers.length; i++) {
                 const user = targetUsers[i];
@@ -502,6 +565,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     igHandle = user.username;
                     user.status = 'KOL INSTAGRAM';
                 } else if (user.platform === 'tiktok.com') {
+                    igHandle = igResultMap.get(user.username.toLowerCase()) || null;
                     user.status = 'KOL TIKTOK';
                 } else {
                     const matchedCandidate = igResultMap.get(user.username.toLowerCase()) || null;
@@ -514,6 +578,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 user.igHandle = igHandle;
+                if (!user.tiktokHandle) {
+                    user.tiktokHandle = ttResultMap.get(user.username.toLowerCase()) || null;
+                }
                 const igLinks = igHandle ? [`https://www.instagram.com/${igHandle}/`] : [];
 
                 const dataToSave = {
@@ -631,14 +698,25 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Action Button: HANYA berikan link "Visit IG" JIKA akun Instagram valid terverifikasi!
-        let actionBtn = '';
+        // Kolom TikTok: link langsung jika akun ditemukan, jika tidak tombol cari di Google
+        let tiktokCellHtml = '';
         if (item.tiktokHandle) {
-            actionBtn = `
+            tiktokCellHtml = `
                 <a href="https://www.tiktok.com/@${item.tiktokHandle}" target="_blank" rel="noopener noreferrer" class="btn-visit btn-tt" title="Kunjungi @${item.tiktokHandle} di TikTok">
-                    <i data-lucide="music-2"></i> Visit TikTok (@${item.tiktokHandle})
+                    <i data-lucide="music-2"></i> <span class="btn-label">@${item.tiktokHandle}</span>
                 </a>
             `;
-        } else if (item.igHandle && isValidInstagramHandle(item.igHandle)) {
+        } else {
+            const ttSearchUrl = `https://www.google.com/search?q=${encodeURIComponent('site:tiktok.com "@' + item.username + '"')}`;
+            tiktokCellHtml = `
+                <a href="${ttSearchUrl}" target="_blank" rel="noopener noreferrer" class="btn-visit btn-no-ig" title="Akun TikTok belum ditemukan otomatis. Klik untuk cari di Google.">
+                    <i data-lucide="search"></i> Cari TikTok
+                </a>
+            `;
+        }
+
+        let actionBtn = '';
+        if (item.igHandle && isValidInstagramHandle(item.igHandle)) {
             actionBtn = `
                 <a href="https://www.instagram.com/${item.igHandle}/" target="_blank" rel="noopener noreferrer" class="btn-visit btn-ig" title="Kunjungi @${item.igHandle} di Instagram">
                     <i data-lucide="instagram"></i> Visit IG (@${item.igHandle})
@@ -667,6 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="bio-snippet" title="${bioText.replace(/"/g, '&quot;')}">${bioText}</div>
             </td>
             <td data-label="Status">${statusBadgeHtml}</td>
+            <td data-label="TikTok">${tiktokCellHtml}</td>
             <td data-label="Action">${actionBtn}</td>
         `;
 
