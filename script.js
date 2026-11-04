@@ -139,6 +139,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     /**
+     * Ekstraksi handle TikTok dari URL profil/video: tiktok.com/@<handle>
+     * Aturan TikTok: 2 - 24 karakter, huruf/angka/titik/garis bawah, tidak diakhiri titik.
+     * URL non-akun (misal /discover/, /tag/) otomatis diabaikan karena tidak memakai "@".
+     */
+    function extractTiktokUser(url) {
+        const m = (url || '').match(/tiktok\.com\/@([a-zA-Z0-9_.]+)/i);
+        if (!m || !m[1]) return null;
+        const clean = m[1].toLowerCase().replace(/\.+$/, '');
+        if (clean.length < 2 || clean.length > 24) return null;
+        return clean;
+    }
+
+    /**
      * Cari kecocokan akun Instagram yang paling relevan (Strict & Smart Matching)
      * Hanya menerima handle yang valid dan memiliki skor kemiripan tinggi.
      */
@@ -274,7 +287,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
-                // 2. Deteksi Lynk.id (Platform Bio link asli Indonesia)
+                // 2. Deteksi TikTok KOL
+                else if (url.includes('tiktok.com') && (platformChoice === 'all' || platformChoice === 'tiktok')) {
+                    const ttUser = extractTiktokUser(url);
+                    const key = ttUser ? `tiktok:${ttUser}` : null;
+                    if (ttUser && !usersMap.has(key)) {
+                        usersMap.set(key, {
+                            username: ttUser,
+                            igHandle: null,
+                            tiktokHandle: ttUser,
+                            platform: 'tiktok.com',
+                            title: title || `KOL TikTok @${ttUser}`,
+                            description: snippet,
+                            profileUrl: `https://www.tiktok.com/@${ttUser}`,
+                            igLinks: [],
+                            status: 'KOL TIKTOK',
+                            country: 'Indonesia 🇮🇩'
+                        });
+                    }
+                }
+
+                // 3. Deteksi Lynk.id (Platform Bio link asli Indonesia)
                 else if (url.includes('lynk.id') && (platformChoice === 'all' || platformChoice === 'lynk')) {
                     const match = url.match(/lynk\.id(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
                     if (match && match[1]) {
@@ -295,7 +328,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
 
-                // 3. Deteksi Linktree Indonesia
+                // 4. Deteksi Linktree Indonesia
                 else if (url.includes('linktr.ee') && (platformChoice === 'all' || platformChoice === 'linktree')) {
                     const match = url.match(/linktr\.ee(?:\/|%2F)([a-zA-Z0-9_.-]+)/i);
                     if (match && match[1]) {
@@ -364,6 +397,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 primaryQueries.push(`site:instagram.com "${keyword}" (endorse OR "paid promote" OR kol OR influencer) indonesia`);
                 primaryQueries.push(`site:instagram.com "${keyword}" (creator OR blogger OR vlogger) (jakarta OR surabaya OR bandung OR indonesia)`);
             }
+            if (platformChoice === 'all' || platformChoice === 'tiktok') {
+                primaryQueries.push(`site:tiktok.com "${keyword}" (endorse OR kol OR influencer) indonesia`);
+                primaryQueries.push(`site:tiktok.com "${keyword}" (creator OR "open collab" OR review) (jakarta OR surabaya OR bandung OR indonesia)`);
+            }
             if (platformChoice === 'all' || platformChoice === 'lynk') {
                 primaryQueries.push(`site:lynk.id ${keyword}`);
             }
@@ -386,6 +423,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (platformChoice === 'all' || platformChoice === 'instagram') {
                     expandQueries.push(`site:instagram.com "${keyword}" indonesia`);
                     expandQueries.push(`site:instagram.com "${keyword}" endorse jakarta`);
+                }
+                if (platformChoice === 'all' || platformChoice === 'tiktok') {
+                    expandQueries.push(`site:tiktok.com "${keyword}" indonesia`);
+                    expandQueries.push(`site:tiktok.com "${keyword}" endorse jakarta`);
                 }
                 if (platformChoice === 'all' || platformChoice === 'lynk') {
                     expandQueries.push(`site:lynk.id "${keyword}"`);
@@ -416,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
             await delay(800);
 
             // TAHAP 2: LOOKUP INSTAGRAM UNTUK PROFIL LYNK.ID / LINKTREE YANG BELUM ADA IG
-            const needIgLookup = targetUsers.filter(u => u.platform !== 'instagram.com');
+            const needIgLookup = targetUsers.filter(u => u.platform === 'lynk.id' || u.platform === 'linktr.ee');
             const igResultMap = new Map();
 
             if (needIgLookup.length > 0) {
@@ -460,6 +501,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (user.platform === 'instagram.com') {
                     igHandle = user.username;
                     user.status = 'KOL INSTAGRAM';
+                } else if (user.platform === 'tiktok.com') {
+                    user.status = 'KOL TIKTOK';
                 } else {
                     const matchedCandidate = igResultMap.get(user.username.toLowerCase()) || null;
                     if (matchedCandidate) {
@@ -476,6 +519,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const dataToSave = {
                     username: user.username,
                     igHandle: igHandle,
+                    tiktokHandle: user.tiktokHandle || null,
                     platform: user.platform,
                     title: user.title,
                     description: user.description,
@@ -497,7 +541,8 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const igCount = currentResults.filter(r => r.igHandle).length;
-            statusText.innerHTML = `<span style="color: var(--success)">🎉 Selesai! Berhasil menemukan <strong>${totalFound}</strong> kreator Indonesia (${igCount} memiliki link Instagram aktif & terverifikasi).</span>`;
+            const ttCount = currentResults.filter(r => r.tiktokHandle).length;
+            statusText.innerHTML = `<span style="color: var(--success)">🎉 Selesai! Berhasil menemukan <strong>${totalFound}</strong> kreator Indonesia (${igCount} akun Instagram, ${ttCount} akun TikTok).</span>`;
 
             if (currentResults.length > 0) {
                 btnExportCsv.classList.remove('hide');
@@ -528,6 +573,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let platformBadge = '';
         if (platform === 'instagram.com') {
             platformBadge = `<span class="platform-pill pill-instagram"><i data-lucide="camera" style="width:12px;height:12px"></i> Instagram</span>`;
+        } else if (platform === 'tiktok.com') {
+            platformBadge = `<span class="platform-pill pill-tiktok"><i data-lucide="music-2" style="width:12px;height:12px"></i> TikTok</span>`;
         } else if (platform === 'lynk.id') {
             platformBadge = `<span class="platform-pill pill-lynk"><i data-lucide="link" style="width:12px;height:12px"></i> Lynk.id</span>`;
         } else {
@@ -538,6 +585,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let statusBadgeHtml = '';
         if (item.status === 'KOL INSTAGRAM') {
             statusBadgeHtml = `<span class="status-badge status-kol-ig">✨ KOL INSTAGRAM</span>`;
+        } else if (item.status === 'KOL TIKTOK') {
+            statusBadgeHtml = `<span class="status-badge status-kol-tt">🎵 KOL TIKTOK</span>`;
         } else if (item.status === 'VERIFIED IG') {
             statusBadgeHtml = `<span class="status-badge status-success">✓ VERIFIED IG</span>`;
         } else {
@@ -551,6 +600,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="user-cell">
                     <a href="${item.profileUrl}" target="_blank" rel="noopener noreferrer" class="user-handle">@${item.username}</a>
                     <span class="user-country">📸 Akun Resmi Instagram</span>
+                </div>
+            `;
+        } else if (platform === 'tiktok.com') {
+            creatorCellHtml = `
+                <div class="user-cell">
+                    <a href="${item.profileUrl}" target="_blank" rel="noopener noreferrer" class="user-handle">@${item.username}</a>
+                    <span class="user-country">🎵 Akun TikTok</span>
                 </div>
             `;
         } else {
@@ -576,7 +632,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Action Button: HANYA berikan link "Visit IG" JIKA akun Instagram valid terverifikasi!
         let actionBtn = '';
-        if (item.igHandle && isValidInstagramHandle(item.igHandle)) {
+        if (item.tiktokHandle) {
+            actionBtn = `
+                <a href="https://www.tiktok.com/@${item.tiktokHandle}" target="_blank" rel="noopener noreferrer" class="btn-visit btn-tt" title="Kunjungi @${item.tiktokHandle} di TikTok">
+                    <i data-lucide="music-2"></i> Visit TikTok (@${item.tiktokHandle})
+                </a>
+            `;
+        } else if (item.igHandle && isValidInstagramHandle(item.igHandle)) {
             actionBtn = `
                 <a href="https://www.instagram.com/${item.igHandle}/" target="_blank" rel="noopener noreferrer" class="btn-visit btn-ig" title="Kunjungi @${item.igHandle} di Instagram">
                     <i data-lucide="instagram"></i> Visit IG (@${item.igHandle})
@@ -617,12 +679,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Export Handlers
     btnExportCsv.addEventListener('click', () => {
         if (currentResults.length === 0) return;
-        let csvContent = 'Username Profil,Akun Instagram,Platform,Negara,Profile URL,Instagram URL,Bio / Info,Status,Tanggal Scraped\n';
+        let csvContent = 'Username Profil,Akun Instagram,Akun TikTok,Platform,Negara,Profile URL,Instagram URL,TikTok URL,Bio / Info,Status,Tanggal Scraped\n';
         currentResults.forEach(r => {
             const igHandle = r.igHandle || '-';
             const igUrl = r.igHandle ? `https://www.instagram.com/${r.igHandle}/` : '-';
+            const ttHandle = r.tiktokHandle || '-';
+            const ttUrl = r.tiktokHandle ? `https://www.tiktok.com/@${r.tiktokHandle}` : '-';
             const cleanBio = (r.description || r.title || '').replace(/"/g, '""').replace(/\n/g, ' ');
-            csvContent += `"${r.username}","${igHandle}","${r.platform}","${r.country}","${r.profileUrl}","${igUrl}","${cleanBio}","${r.status}","${r.dateScraped}"\n`;
+            csvContent += `"${r.username}","${igHandle}","${ttHandle}","${r.platform}","${r.country}","${r.profileUrl}","${igUrl}","${ttUrl}","${cleanBio}","${r.status}","${r.dateScraped}"\n`;
         });
 
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
